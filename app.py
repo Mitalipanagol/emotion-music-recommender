@@ -109,7 +109,7 @@ if region["w"] and region["h"]:
 
 col_img, col_info = st.columns([1, 1])
 with col_img:
-    st.image(annotated, caption="Detected face", use_column_width=True)
+    st.image(annotated, caption="Detected face", use_container_width=True)
 with col_info:
     st.markdown(
         f"## {EMOTION_EMOJI.get(dominant, '')} {dominant.title()}  \n"
@@ -120,37 +120,55 @@ with col_info:
         st.progress(min(max(scores[emo], 0.0), 1.0), text=f"{emo.title()} — {scores[emo] * 100:.1f}%")
 
 # --------------------------------------------------------------------- #
-# Recommend + play
+# Recommend + play (7 tracks)
 # --------------------------------------------------------------------- #
-st.subheader("3. Your song")
+st.subheader(f"3. 7 songs for your {dominant} mood")
 if spotify is None:
+    st.error(
+        "Spotify is not configured, so no songs can be loaded.\n\n"
+        "**Fix:** create a `.env` file in the project root with:\n\n"
+        "```\nSPOTIPY_CLIENT_ID=your_client_id\n"
+        "SPOTIPY_CLIENT_SECRET=your_client_secret\n"
+        "SPOTIPY_REDIRECT_URI=http://127.0.0.1:8888/callback\n```\n\n"
+        "Get the ID/secret from https://developer.spotify.com/dashboard, "
+        "then restart the app."
+    )
     st.stop()
 
-with st.spinner("Finding a track that matches your mood..."):
-    track = spotify.recommend_track(dominant)
+with st.spinner("Finding tracks that match your mood..."):
+    try:
+        tracks = spotify.recommend_tracks(dominant, limit=7)
+    except Exception as e:
+        st.error(f"Spotify search failed: {e}")
+        st.stop()
 
-if track is None:
-    st.error("Couldn't find a matching track on Spotify. Try again.")
+if not tracks:
+    st.error("Couldn't find matching tracks on Spotify. Try again.")
     st.stop()
 
-c1, c2 = st.columns([1, 2])
-with c1:
-    if track.image_url:
-        st.image(track.image_url, use_column_width=True)
-with c2:
-    st.markdown(f"### {track.name}")
-    st.markdown(f"**by** {track.artist}")
-    st.markdown(f"[Open on Spotify ↗]({track.track_url})")
-    if track.preview_url:
-        st.audio(track.preview_url)
+for idx, track in enumerate(tracks, start=1):
+    with st.container(border=True):
+        c1, c2 = st.columns([1, 3])
+        with c1:
+            if track.image_url:
+                st.image(track.image_url, use_container_width=True)
+        with c2:
+            st.markdown(f"**{idx}. {track.name}**")
+            st.caption(f"by {track.artist}")
 
-play_col, open_col = st.columns(2)
-with play_col:
-    if st.button("▶  Play on Spotify", type="primary", use_container_width=True):
-        ok, msg = spotify.play_track(track.track_uri)
-        (st.success if ok else st.warning)(msg)
-        if not ok:
-            spotify.open_in_browser(track.track_url)
-with open_col:
-    if st.button("Open in browser", use_container_width=True):
-        spotify.open_in_browser(track.track_url)
+            if track.preview_url:
+                st.audio(track.preview_url)
+            else:
+                st.caption("_30-sec preview unavailable for this track — use the buttons below._")
+
+            b1, b2 = st.columns(2)
+            with b1:
+                if st.button("▶ Play full track", key=f"play_{idx}", use_container_width=True):
+                    ok, msg = spotify.play_track(track.track_uri)
+                    (st.success if ok else st.warning)(msg)
+                    if not ok:
+                        spotify.open_in_browser(track.track_url)
+            with b2:
+                st.link_button(
+                    "Open in Spotify ↗", track.track_url, use_container_width=True
+                )

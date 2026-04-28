@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import webbrowser
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 from dotenv import load_dotenv
 import spotipy
@@ -72,17 +72,8 @@ class SpotifyClient:
     # ------------------------------------------------------------------ #
     # Recommendation
     # ------------------------------------------------------------------ #
-    def recommend_track(self, emotion: str) -> Optional[TrackInfo]:
-        """Search Spotify for a track matching the given emotion."""
-        query = EMOTION_QUERY.get(emotion, EMOTION_QUERY["neutral"])
-        results = self.sp.search(q=query, type="track", limit=20, market="from_token")
-        items = (results or {}).get("tracks", {}).get("items", []) or []
-        if not items:
-            return None
-
-        # Prefer a track that has a preview_url so non-premium users still hear something.
-        items.sort(key=lambda t: (t.get("preview_url") is None, -t.get("popularity", 0)))
-        track = items[0]
+    @staticmethod
+    def _track_to_info(track: dict) -> TrackInfo:
         images = (track.get("album", {}) or {}).get("images", []) or []
         return TrackInfo(
             name=track.get("name", "Unknown"),
@@ -92,6 +83,36 @@ class SpotifyClient:
             preview_url=track.get("preview_url"),
             image_url=images[0]["url"] if images else None,
         )
+
+    def recommend_tracks(self, emotion: str, limit: int = 7) -> List[TrackInfo]:
+        """Search Spotify for up to ``limit`` tracks matching the emotion.
+
+        Results are de-duplicated by track URI and sorted so that tracks
+        with a 30-second preview come first (so non-premium users can
+        always hear something), then by popularity descending.
+        """
+        query = EMOTION_QUERY.get(emotion, EMOTION_QUERY["neutral"])
+        # Spotify search now caps `limit` at 10 for development-mode apps.
+        results = self.sp.search(q=query, type="track", limit=10)
+        items = (results or {}).get("tracks", {}).get("items", []) or []
+        if not items:
+            return []
+
+        seen: set[str] = set()
+        unique: list[dict] = []
+        for t in items:
+            uri = t.get("uri")
+            if uri and uri not in seen:
+                seen.add(uri)
+                unique.append(t)
+
+        unique.sort(key=lambda t: (t.get("preview_url") is None, -t.get("popularity", 0)))
+        return [self._track_to_info(t) for t in unique[:limit]]
+
+    def recommend_track(self, emotion: str) -> Optional[TrackInfo]:
+        """Backwards-compatible single-track recommendation."""
+        tracks = self.recommend_tracks(emotion, limit=1)
+        return tracks[0] if tracks else None
 
     # ------------------------------------------------------------------ #
     # Playback
