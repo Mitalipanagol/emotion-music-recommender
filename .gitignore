@@ -1,0 +1,8 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.cache
+.spotipy_cache
+.streamlit/secrets.toml

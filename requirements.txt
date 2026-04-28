@@ -1,0 +1,9 @@
+streamlit>=1.39
+opencv-python>=4.10.0.84
+numpy>=2.1
+Pillow>=10.4
+torch>=2.5
+torchvision>=0.20
+transformers>=4.45
+spotipy>=2.24
+python-dotenv>=1.0.1
