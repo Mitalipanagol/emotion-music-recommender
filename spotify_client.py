@@ -1,11 +1,4 @@
-"""Spotify integration for the emotion-based music recommender.
 
-Uses Spotipy with the Authorization Code flow so we can:
-  * search for mood-matching playlists / tracks
-  * start playback on the user's currently active Spotify device
-  * fall back to opening the track URL in the browser when no device
-    is active or the user is not Premium.
-"""
 from __future__ import annotations
 
 import os
@@ -19,10 +12,8 @@ from spotipy.oauth2 import SpotifyOAuth
 
 load_dotenv()
 
-# Scopes required to read playback state and start/transfer playback.
 SCOPE = "user-read-playback-state user-modify-playback-state streaming"
 
-# Curated mood -> Spotify search query map.
 EMOTION_QUERY = {
     "happy":    "happy upbeat feel good hits",
     "sad":      "sad songs emotional acoustic",
@@ -45,7 +36,6 @@ class TrackInfo:
 
 
 class SpotifyClient:
-    """Thin Spotipy wrapper exposing emotion-based recommendation + playback."""
 
     def __init__(self, cache_path: str = ".spotipy_cache") -> None:
         client_id = os.getenv("SPOTIPY_CLIENT_ID")
@@ -69,9 +59,7 @@ class SpotifyClient:
         )
         self.sp = spotipy.Spotify(auth_manager=auth_manager)
 
-    # ------------------------------------------------------------------ #
-    # Recommendation
-    # ------------------------------------------------------------------ #
+
     @staticmethod
     def _track_to_info(track: dict) -> TrackInfo:
         images = (track.get("album", {}) or {}).get("images", []) or []
@@ -85,14 +73,8 @@ class SpotifyClient:
         )
 
     def recommend_tracks(self, emotion: str, limit: int = 7) -> List[TrackInfo]:
-        """Search Spotify for up to ``limit`` tracks matching the emotion.
-
-        Results are de-duplicated by track URI and sorted so that tracks
-        with a 30-second preview come first (so non-premium users can
-        always hear something), then by popularity descending.
-        """
+        
         query = EMOTION_QUERY.get(emotion, EMOTION_QUERY["neutral"])
-        # Spotify search now caps `limit` at 10 for development-mode apps.
         results = self.sp.search(q=query, type="track", limit=10)
         items = (results or {}).get("tracks", {}).get("items", []) or []
         if not items:
@@ -110,13 +92,10 @@ class SpotifyClient:
         return [self._track_to_info(t) for t in unique[:limit]]
 
     def recommend_track(self, emotion: str) -> Optional[TrackInfo]:
-        """Backwards-compatible single-track recommendation."""
         tracks = self.recommend_tracks(emotion, limit=1)
         return tracks[0] if tracks else None
 
-    # ------------------------------------------------------------------ #
-    # Playback
-    # ------------------------------------------------------------------ #
+
     def get_active_device_id(self) -> Optional[str]:
         devices = (self.sp.devices() or {}).get("devices", []) or []
         for d in devices:
@@ -125,11 +104,7 @@ class SpotifyClient:
         return devices[0]["id"] if devices else None
 
     def play_track(self, track_uri: str) -> tuple[bool, str]:
-        """Try to start playback on an active device.
-
-        Returns ``(success, message)``. On failure (no device / not premium /
-        scope error) the caller can fall back to opening the URL in a browser.
-        """
+        
         try:
             device_id = self.get_active_device_id()
             if not device_id:

@@ -1,34 +1,17 @@
-"""Emotion detection using HuggingFace ViT (PyTorch) + OpenCV face detection.
-
-Pipeline:
-  1. OpenCV Haar cascade locates the largest face in the frame.
-  2. The face crop is fed to ``trpakov/vit-face-expression`` -- a Vision
-     Transformer fine-tuned on FER+ that classifies the 7 standard emotions:
-     angry, disgust, fear, happy, sad, surprise, neutral.
-
-This stack is chosen because it (a) does not require TensorFlow (works on
-Python 3.13) and (b) achieves significantly higher accuracy than the
-classic FER-2013 CNNs.
-"""
 from __future__ import annotations
-
 import os
 from typing import Optional
-
 import cv2
 import numpy as np
 import torch
 from PIL import Image
 from transformers import AutoImageProcessor, AutoModelForImageClassification
-
-# Silence noisy HF / tokenizers logs.
 os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 EMOTIONS = ("angry", "disgust", "fear", "happy", "sad", "surprise", "neutral")
 _MODEL_ID = "trpakov/vit-face-expression"
 
-# Map model label names -> our canonical emotion keys.
 _LABEL_ALIASES = {
     "angry": "angry", "anger": "angry",
     "disgust": "disgust",
@@ -41,7 +24,6 @@ _LABEL_ALIASES = {
 
 
 class EmotionDetector:
-    """Detects the dominant facial emotion in an image / frame."""
 
     def __init__(self, device: Optional[str] = None) -> None:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
@@ -54,9 +36,6 @@ class EmotionDetector:
         )
         self.face_cascade = cv2.CascadeClassifier(cascade_path)
 
-    # ------------------------------------------------------------------ #
-    # Internal helpers
-    # ------------------------------------------------------------------ #
     def _detect_largest_face(self, image_bgr: np.ndarray):
         gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
         faces = self.face_cascade.detectMultiScale(
@@ -83,27 +62,18 @@ class EmotionDetector:
                 scores[canonical] = float(p)
         return scores
 
-    # ------------------------------------------------------------------ #
-    # Public API
-    # ------------------------------------------------------------------ #
     def analyze(self, image_bgr: np.ndarray) -> Optional[dict]:
-        """Run emotion analysis on a BGR image (as produced by OpenCV).
-
-        Returns dict with ``dominant_emotion`` (str), ``scores`` (dict in 0..1),
-        and ``region`` (x,y,w,h) -- or ``None`` if no face was detected.
-        """
+        
         if image_bgr is None or image_bgr.size == 0:
             return None
 
         face_box = self._detect_largest_face(image_bgr)
         if face_box is None:
-            # Fallback: classify the whole frame (some camera shots have
-            # tightly cropped faces the cascade misses).
+           
             face_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
             region = {"x": 0, "y": 0, "w": image_bgr.shape[1], "h": image_bgr.shape[0]}
         else:
             x, y, w, h = (int(v) for v in face_box)
-            # Expand the crop slightly so chin/forehead are included.
             pad = int(0.15 * max(w, h))
             x0 = max(0, x - pad)
             y0 = max(0, y - pad)
